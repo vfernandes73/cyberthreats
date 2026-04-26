@@ -1,0 +1,6 @@
+{
+  "name": "ThreatRadar - Intelligence Dashboard",
+  "description": "Explorador de amenazas en tiempo real con filtrado por región, vertical y dominio. Generación de IoCs, perfiles de actores y alertas personalizadas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["search", "data-visualization", "ai-summarization"]
+}
