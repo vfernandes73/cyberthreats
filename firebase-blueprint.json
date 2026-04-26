@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "Threat": {
+      "title": "Threat Report",
+      "description": "Information about a detected security threat or actor.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "region": { "type": "string" },
+        "vertical": { "type": "string" },
+        "domain": { "type": "string" },
+        "actors": { "type": "array", "items": { "type": "string" } },
+        "iocs": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "value": { "type": "string" },
+              "actor": { "type": "string" }
+            }
+          }
+        },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "keywords": { "type": "array", "items": { "type": "string" } },
+        "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] }
+      },
+      "required": ["title", "summary", "region", "vertical", "publishedAt"]
+    },
+    "Alert": {
+      "title": "User Alert Filter",
+      "description": "Predefined filters for user notifications.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "filters": {
+          "type": "object",
+          "properties": {
+            "region": { "type": "string" },
+            "vertical": { "type": "string" },
+            "keywords": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "filters", "createdAt"]
+    },
+    "ActorProfile": {
+      "title": "Threat Actor Profile",
+      "description": "Detailed profile of a known threat actor.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "techniques": { "type": "array", "items": { "type": "string" } },
+        "lastSeen": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "description"]
+    }
+  },
+  "firestore": {
+    "/threats/{threatId}": {
+      "schema": "Threat",
+      "description": "Collection of threat intelligence reports."
+    },
+    "/alerts/{alertId}": {
+      "schema": "Alert",
+      "description": "User notification preferences."
+    },
+    "/profiles/{profileId}": {
+      "schema": "ActorProfile",
+      "description": "Database of known threat actors and their TTPs."
+    }
+  }
+}

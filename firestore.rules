@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidThreat(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.summary is string && data.summary.size() <= 5000 &&
+             data.region is string &&
+             data.vertical is string &&
+             data.publishedAt is timestamp;
+    }
+
+    function isValidAlert(data) {
+      return data.userId == request.auth.uid &&
+             data.filters is map &&
+             data.createdAt == request.time;
+    }
+
+    // Threats Collection
+    match /threats/{threatId} {
+      allow read: if isSignedIn();
+      // In a real app, only admins could write. For this demo, we allow signed in users.
+      allow create: if isSignedIn() && isValidThreat(request.resource.data);
+      allow update: if isSignedIn() && isValidThreat(request.resource.data) && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'summary', 'severity', 'iocs', 'actors']);
+      allow delete: if false; // Immutability
+    }
+
+    // Alerts Collection
+    match /alerts/{alertId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidAlert(request.resource.data);
+      allow update: if isOwner(resource.data.userId) && isValidAlert(request.resource.data);
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    // Profiles Collection
+    match /profiles/{profileId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn(); // Demo purposes
+    }
+  }
+}

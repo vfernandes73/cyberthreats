@@ -1,1 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-dash-bg: #E4E3E0;
+  --color-dash-ink: #141414;
+  --color-dash-line: #141414;
+}
+
+@layer base {
+  body {
+    @apply bg-[family-name:--color-dash-bg] text-[family-name:--color-dash-ink] font-sans antialiased;
+  }
+}
+
+@layer components {
+  .data-row {
+    @apply grid grid-cols-[40px_1.5fr_1fr_1fr] p-4 border-b border-[family-name:--color-dash-line] transition-colors duration-200 cursor-pointer hover:bg-[family-name:--color-dash-ink] hover:text-[family-name:--color-dash-bg];
+  }
+
+  .col-header {
+    @apply font-serif italic text-[11px] opacity-50 uppercase tracking-wider;
+  }
+
+  .data-value {
+    @apply font-mono text-[13px] tracking-tight;
+  }
+
+  /* Hardware look for widgets */
+  .hardware-card {
+    @apply bg-zinc-900 text-white rounded-xl shadow-2xl p-6 border-b-4 border-zinc-700;
+  }
+}
