@@ -58,6 +58,16 @@
         "lastSeen": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "description"]
+    },
+    "Source": {
+      "title": "News Source",
+      "description": "Public news source for threat intelligence.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "url": { "type": "string" }
+      },
+      "required": ["name", "url"]
     }
   },
   "firestore": {
@@ -72,6 +82,10 @@
     "/profiles/{profileId}": {
       "schema": "ActorProfile",
       "description": "Database of known threat actors and their TTPs."
+    },
+    "/sources/{sourceId}": {
+      "schema": "Source",
+      "description": "Managed threat intelligence news sources."
     }
   }
 }

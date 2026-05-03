@@ -57,5 +57,13 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isSignedIn(); // Demo purposes
     }
+
+    // Sources Collection
+    match /sources {
+      allow read, write: if isSignedIn();
+      match /{sourceId} {
+        allow read, write: if isSignedIn();
+      }
+    }
   }
 }

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  collection, query, onSnapshot, addDoc, 
+  collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc,
   orderBy, limit as limitFirestore, Timestamp, where, getDocs
 } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
@@ -18,14 +18,18 @@ import {
 } from 'recharts';
 
 import { db, auth, signIn, handleFirestoreError } from './lib/firebase';
-import { Threat, ActorProfile, OperationType } from './types';
-import { searchThreats, getActorProfile } from './services/geminiService';
+import { Threat, ActorProfile, Alert, Source, OperationType } from './types';
+import { searchThreats, getActorProfile, generateThreatIoCs } from './services/geminiService';
 import { REGIONS, VERTICALS, SEVERITY_COLORS } from './constants';
 import { cn, formatDate } from './lib/utils';
 
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [threats, setThreats] = useState<Threat[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
+  const [newSourceName, setNewSourceName] = useState('');
+  const [newSourceUrl, setNewSourceUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,6 +37,10 @@ export default function App() {
   const [selectedVertical, setSelectedVertical] = useState('All');
   const [domainFilter, setDomainFilter] = useState('');
   const [notifications, setNotifications] = useState<string[]>([]);
+  const [creatingAlert, setCreatingAlert] = useState(false);
+  const [alertRegion, setAlertRegion] = useState('Global');
+  const [alertVertical, setAlertVertical] = useState('All');
+  const [alertKeywords, setAlertKeywords] = useState('');
   const [selectedThreat, setSelectedThreat] = useState<Threat | null>(null);
   const [actorProfile, setActorProfile] = useState<ActorProfile | null>(null);
 
@@ -44,27 +52,63 @@ export default function App() {
     });
   }, []);
 
-  // Threats Real-time Listener
+  // Real-time Listeners
   useEffect(() => {
     if (!user) return;
 
-    const q = query(collection(db, 'threats'), orderBy('publishedAt', 'desc'), limitFirestore(50));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const qTh = query(collection(db, 'threats'), orderBy('publishedAt', 'desc'), limitFirestore(50));
+    const unsubscribeThreats = onSnapshot(qTh, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Threat));
       
-      // Check for alerts/notifications
-      if (threats.length > 0 && data.length > threats.length) {
-        const newThreat = data[0];
-        setNotifications(prev => [`New threat detected: ${newThreat.title}`, ...prev]);
-      }
+      // Check for notifications based on alerts
+      alerts.forEach(alert => {
+        data.forEach(threat => {
+          if ((alert.filters.region === 'Global' || threat.region === alert.filters.region) &&
+              (alert.filters.vertical === 'All' || threat.vertical === alert.filters.vertical) &&
+              ((alert.filters.keywords || []).length === 0 || (alert.filters.keywords || []).some(kw => threat.title.includes(kw) || threat.summary.includes(kw)))) {
+             setNotifications(prev => [`Alert match for ${threat.title}`, ...prev]);
+          }
+        });
+      });
       
       setThreats(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'threats');
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'threats'));
 
-    return unsubscribe;
-  }, [user, threats.length]);
+    const qAl = query(collection(db, 'alerts'), where('userId', '==', user.uid));
+    const unsubscribeAlerts = onSnapshot(qAl, (snapshot) => {
+      setAlerts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Alert)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'alerts'));
+
+    const qSo = query(collection(db, 'sources'));
+    const unsubscribeSources = onSnapshot(qSo, (snapshot) => {
+        setSources(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Source)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'sources'));
+
+    return () => {
+        unsubscribeThreats();
+        unsubscribeAlerts();
+        unsubscribeSources();
+    };
+  }, [user]);
+
+  const addSource = async () => {
+      if (!newSourceName || !newSourceUrl) return;
+      try {
+          await addDoc(collection(db, 'sources'), { name: newSourceName, url: newSourceUrl });
+          setNewSourceName('');
+          setNewSourceUrl('');
+      } catch (error) {
+          handleFirestoreError(error, OperationType.CREATE, 'sources');
+      }
+  };
+
+  const deleteSource = async (id: string) => {
+      try {
+          await deleteDoc(doc(db, 'sources', id));
+      } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, 'sources');
+      }
+  };
 
   const filteredThreats = useMemo(() => {
     return threats.filter(t => {
@@ -144,6 +188,18 @@ export default function App() {
       }
     } catch (error) {
       console.error("Error viewing actor:", error);
+    }
+  };
+
+  const handleGenerateIoCs = async (threat: Threat) => {
+    try {
+      const newIocs = await generateThreatIoCs(threat.title, threat.summary);
+      const threatRef = doc(db, 'threats', threat.id);
+      await updateDoc(threatRef, {
+        iocs: [...(threat.iocs || []), ...newIocs]
+      });
+    } catch (error) {
+       console.error("Error generating IoCs:", error);
     }
   };
 
@@ -248,6 +304,41 @@ export default function App() {
             {searching ? <div className="w-3 h-3 border-2 border-dash-bg border-t-transparent animate-spin rounded-full" /> : <Search className="w-3 h-3" />}
             Sync Sources
           </button>
+          
+          <button 
+             onClick={() => setCreatingAlert(!creatingAlert)}
+             className={cn("w-full py-3 font-mono font-bold uppercase text-[10px] tracking-[0.2em] border border-dash-ink flex items-center justify-center gap-2", creatingAlert ? "bg-dash-ink text-dash-bg" : "bg-transparent text-dash-ink")}
+          >
+            <Bell className="w-3 h-3" />
+            {creatingAlert ? 'Cancel Alert' : 'Create Custom Alert'}
+          </button>
+
+          {/* Sources Management */}
+          <div className="pt-6 border-t border-dash-line">
+            <label className="col-header block mb-2">Monitor Sources</label>
+            <div className="space-y-2 mb-4">
+                {sources.map(s => (
+                    <div key={s.id} className="flex justify-between items-center bg-white/50 p-2 text-[10px]">
+                        <span className="truncate">{s.name}</span>
+                        <button onClick={() => deleteSource(s.id)} className="text-red-500">Delete</button>
+                    </div>
+                ))}
+            </div>
+            <div className="space-y-2">
+                <input placeholder="Name" value={newSourceName} onChange={(e) => setNewSourceName(e.target.value)} className="w-full p-2 bg-transparent border border-dash-line text-xs" />
+                <input placeholder="URL" value={newSourceUrl} onChange={(e) => setNewSourceUrl(e.target.value)} className="w-full p-2 bg-transparent border border-dash-line text-xs" />
+                <button onClick={addSource} className="w-full py-2 bg-dash-ink text-dash-bg text-[10px] font-bold uppercase">Add Source</button>
+            </div>
+          </div>
+
+          {creatingAlert && (
+            <div className="p-4 border border-dash-line bg-white/50 space-y-4">
+               <select value={alertRegion} onChange={(e) => setAlertRegion(e.target.value)} className="w-full p-2 bg-transparent border border-dash-line text-xs">{REGIONS.map(r => <option key={r} value={r}>{r}</option>)}</select>
+               <select value={alertVertical} onChange={(e) => setAlertVertical(e.target.value)} className="w-full p-2 bg-transparent border border-dash-line text-xs">{VERTICALS.map(v => <option key={v} value={v}>{v}</option>)}</select>
+               <input type="text" placeholder="Keywords (comma separated)" value={alertKeywords} onChange={(e) => setAlertKeywords(e.target.value)} className="w-full p-2 bg-transparent border border-dash-line text-xs" />
+               <button onClick={handleCreateAlert} className="w-full py-2 bg-dash-ink text-dash-bg text-[10px] font-bold uppercase">Save Alert</button>
+            </div>
+          )}
         </div>
 
         <div className="mt-auto pt-6 border-t border-dash-line/20">
@@ -337,7 +428,9 @@ export default function App() {
                     )}
                   >
                     <div className="flex items-center justify-center">
-                      <div className={cn("w-2 h-2 rounded-full", SEVERITY_COLORS[threat.severity as Severity])} />
+                      <div className={cn("w-3 h-3 rounded-full flex items-center justify-center", SEVERITY_COLORS[threat.severity as Severity])}>
+                        {threat.severity === 'critical' && <Shield className="w-2 h-2 text-white" />}
+                      </div>
                     </div>
                     <div className="flex flex-col min-w-0 pr-4">
                       <p className="font-bold truncate text-sm uppercase tracking-tight">{threat.title}</p>
@@ -349,7 +442,15 @@ export default function App() {
                       <Building2 className="w-3 h-3 opacity-30" />
                       <span className="data-value uppercase text-[11px] truncate">{threat.vertical}</span>
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-4">
+                      
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleGenerateIoCs(threat); }}
+                        className="p-1.5 hover:bg-white/20 rounded transition-colors"
+                        title="Generate IoCs with AI"
+                      >
+                         <Terminal className="w-3 h-3" />
+                      </button>
                       <div className="flex items-center gap-2">
                         <Globe className="w-3 h-3 opacity-30" />
                         <span className="data-value text-[11px]">{threat.region}</span>
@@ -491,13 +592,21 @@ export default function App() {
                   <div className="bg-white border border-dash-line p-6 rounded-xl space-y-4 max-h-[400px] overflow-hidden flex flex-col">
                     <h3 className="col-header flex items-center gap-2"><Bell className="w-4 h-4" /> Operations Registry</h3>
                     <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-                      {notifications.length > 0 ? (
-                        notifications.map((note, i) => (
-                          <div key={i} className="flex gap-3 text-[11px] leading-tight">
-                            <div className="w-1 h-auto bg-dash-ink opacity-20 rounded-full grow-0 shrink-0" />
-                            <p className="font-medium">{note}</p>
-                          </div>
-                        ))
+                      {notifications.length > 0 || alerts.length > 0 ? (
+                        <>
+                          {notifications.map((note, i) => (
+                            <div key={`note-${i}`} className="flex gap-3 text-[11px] leading-tight bg-white p-2 rounded items-center border border-sky-100">
+                              <AlertCircle className="w-3 h-3 text-sky-600" />
+                              <p className="font-medium text-sky-900">{note}</p>
+                            </div>
+                          ))}
+                          {alerts.map(alert => (
+                            <div key={alert.id} className="flex gap-3 text-[11px] leading-tight text-blue-900 bg-blue-50 p-2 rounded border border-blue-100">
+                              <Bell className="w-3 h-3 mt-0.5 text-blue-600" />
+                              <p className="font-medium">Alert: {alert.filters.region} / {alert.filters.vertical}</p>
+                            </div>
+                          ))}
+                        </>
                       ) : (
                         <p className="text-center font-mono text-[10px] opacity-30 italic py-12">Registry clear. Monitoring system live.</p>
                       )}

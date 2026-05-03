@@ -42,6 +42,12 @@ export interface ActorProfile {
   lastSeen: Timestamp;
 }
 
+export interface Source {
+  id: string;
+  name: string;
+  url: string;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

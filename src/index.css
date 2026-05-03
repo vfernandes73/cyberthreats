@@ -5,9 +5,9 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   
-  --color-dash-bg: #E4E3E0;
-  --color-dash-ink: #141414;
-  --color-dash-line: #141414;
+  --color-dash-bg: #E0F2FE;
+  --color-dash-ink: #0C4A6E;
+  --color-dash-line: #38BDF8;
 }
 
 @layer base {
@@ -22,7 +22,7 @@
   }
 
   .col-header {
-    @apply font-serif italic text-[11px] opacity-50 uppercase tracking-wider;
+    @apply font-serif italic text-[11px] opacity-70 uppercase tracking-wider;
   }
 
   .data-value {
@@ -31,6 +31,6 @@
 
   /* Hardware look for widgets */
   .hardware-card {
-    @apply bg-zinc-900 text-white rounded-xl shadow-2xl p-6 border-b-4 border-zinc-700;
+    @apply bg-sky-900 text-sky-50 rounded-xl shadow-2xl p-6 border-b-4 border-sky-700;
   }
 }

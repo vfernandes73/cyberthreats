@@ -93,3 +93,38 @@ export async function getActorProfile(actorName: string): Promise<{ description:
     return { description: "Information not available.", techniques: [] };
   }
 }
+
+export async function generateThreatIoCs(title: string, summary: string): Promise<IOC[]> {
+  const prompt = `Generate potential Indicators of Compromise (IoCs) for the following threat:
+  Title: ${title}
+  Summary: ${summary}
+  
+  Provide a list of IoCs (type: 'IP', 'Domain', 'Hash', 'URL'; value: string) most relevant to this threat.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              type: { type: Type.STRING },
+              value: { type: Type.STRING },
+              actor: { type: Type.STRING }
+            },
+            required: ["type", "value"]
+          }
+        }
+      }
+    });
+
+    return JSON.parse(response.text || '[]');
+  } catch (error) {
+    console.error("Error generating IoCs:", error);
+    return [];
+  }
+}
